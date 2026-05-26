@@ -1,55 +1,38 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>WikiGames</title>
-
   <link rel="stylesheet" href="styles.css">
-  <script defer src="script.js"></script>
-
-  <!-- Icônes (si tu les utilises déjà) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+  <script defer src="script.js"></script>
 </head>
-
 <body>
-
-<div id="wg-root">
-
-  <div class="wg-header">
-    <div class="wg-logo">Wiki<span>Games</span></div>
-
-    <div class="wg-score-pill">
-      <i class="ti ti-trophy"></i>
-      Score : <strong id="wg-score-display">0</strong>
-      &nbsp;·&nbsp;
-      <i class="ti ti-flame"></i>
-      Série : <strong id="wg-streak-display" class="streak-val">0</strong>
+<div id="app">
+  <div class="header">
+    <div class="logo">Wiki<span>Games</span></div>
+    <div class="score-pill">
+      <i class="ti ti-trophy" aria-hidden="true"></i>
+      <strong id="hdr-score">0</strong>
+      <span class="sep">·</span>
+      <i class="ti ti-flame streak-fire" aria-hidden="true"></i>
+      <strong id="hdr-streak">0</strong>
     </div>
   </div>
 
-  <div class="wg-scoreboard">
-    <div class="wg-stat"><div class="wg-stat-val" id="sb-score">0</div><div class="wg-stat-lbl">Points</div></div>
-    <div class="wg-stat"><div class="wg-stat-val" id="sb-streak">0</div><div class="wg-stat-lbl">Série</div></div>
-    <div class="wg-stat"><div class="wg-stat-val" id="sb-best">0</div><div class="wg-stat-lbl">Meilleure</div></div>
-    <div class="wg-stat"><div class="wg-stat-val" id="sb-rounds">0</div><div class="wg-stat-lbl">Questions</div></div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-val" id="sb-score">0</div><div class="stat-lbl">Points</div></div>
+    <div class="stat-card"><div class="stat-val" id="sb-streak">0</div><div class="stat-lbl">Série</div></div>
+    <div class="stat-card"><div class="stat-val" id="sb-best">0</div><div class="stat-lbl">Meilleure</div></div>
+    <div class="stat-card"><div class="stat-val" id="sb-rounds">0</div><div class="stat-lbl">Questions</div></div>
   </div>
 
-  <div class="wg-modes" id="wg-modes">
-    <button class="wg-mode-btn active" data-mode="which-country">📍 Pays</button>
-    <button class="wg-mode-btn" data-mode="before-after">📅 Chrono</button>
-    <button class="wg-mode-btn" data-mode="popularity">📊 Popularité</button>
-    <button class="wg-mode-btn" data-mode="true-false">❓ V/F</button>
-  </div>
+  <div class="modes" id="modes"></div>
 
-  <div class="wg-question-card" id="wg-card">
-    <div class="wg-loader">
-      <div class="wg-loader-bar"><div class="wg-loader-fill"></div></div>
-      <span>Chargement…</span>
-    </div>
-  </div>
-
+  <div class="card" id="card" role="main" aria-live="polite"></div>
 </div>
-
 </body>
 </html>

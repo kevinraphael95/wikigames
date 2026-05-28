@@ -1,25 +1,15 @@
 "use strict";
 
-/* ════════════════════════════════════════════════════
-   WikiGames — script.js
-   Toutes les données viennent de :
-     · Wikidata SPARQL (requêtes ciblées, garanti image + propriété)
-     · Wikimedia most-read API (popularité)
-   Zéro liste hardcodée.
-   ════════════════════════════════════════════════════ */
-
 const SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
 const WIKI_REST       = "https://fr.wikipedia.org/api/rest_v1";
 const WIKI_VIEWS_TOP  = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/fr.wikipedia/all-access";
 
-/* ── État ── */
 const state = {
   mode: "which-country",
   score: 0, streak: 0, best: 0, rounds: 0,
   answered: false,
 };
 
-/* ── DOM ── */
 const qs   = s => document.querySelector(s);
 const card = qs("#card");
 
@@ -60,7 +50,7 @@ function onCorrect() {
 }
 function onWrong() { state.streak = 0; state.rounds++; updateScore(); }
 
-/* ── UI helpers ── */
+/* ── UI ── */
 function showLoader() {
   card.innerHTML = `<div class="loader"><div class="loader-ring"></div><span>Chargement…</span></div>`;
 }
@@ -70,6 +60,15 @@ function showError(msg) {
 function nextBtn() {
   return `<div class="actions"><button class="btn-next" disabled>Suivant<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button></div>`;
 }
+
+/* Image HTML avec fallback — hauteur fixe, object-fit cover, object-position top pour portraits */
+function imgHTML(src, alt, cls = "card-image") {
+  if (!src) return "";
+  return `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer"
+    onerror="this.parentElement.style.display='none'"
+    style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block">`;
+}
+
 function bindOptions(correctVal, onReveal) {
   state.answered = false;
   const opts = card.querySelectorAll(".opt");
@@ -99,55 +98,65 @@ function bindOptions(correctVal, onReveal) {
 }
 
 /* ════════════════════════════════════════════════════
-   SPARQL helper
+   SPARQL
    ════════════════════════════════════════════════════ */
 async function sparql(query) {
   const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
-  const r = await fetch(url, { headers: { "Accept": "application/sparql-results+json", "User-Agent": "WikiGames/2.0" } });
+  const r = await fetch(url, {
+    headers: { "Accept": "application/sparql-results+json", "User-Agent": "WikiGames/2.0" }
+  });
   if (!r.ok) throw new Error(`SPARQL ${r.status}`);
   const d = await r.json();
   return d.results.bindings;
 }
 
-/* Convertit une URL image Wikidata en URL haute résolution */
-function wikimediaThumb(url, width = 600) {
-  if (!url) return null;
-  /* Format : https://commons.wikimedia.org/wiki/Special:FilePath/Fichier.jpg */
-  const filename = decodeURIComponent(url.split("/").pop());
-  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=${width}`;
+/* Convertit URL image Wikidata → URL Wikimedia upload (pas de pb referrer) */
+function wikimediaUrl(wikidataImageUrl, width = 500) {
+  if (!wikidataImageUrl) return null;
+  try {
+    let filename = decodeURIComponent(wikidataImageUrl.split("/").pop());
+    filename = filename.replace(/ /g, "_");
+    // MD5 pour le path Wikimedia
+    // On utilise Special:FilePath qui redirige vers le bon CDN
+    return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=${width}`;
+  } catch { return null; }
+}
+
+/* Pour les thumbnails Wikipedia REST API → remplace la taille */
+function wikiThumb(src, width = 400) {
+  if (!src) return null;
+  return src.replace(/\/\d+px-/, `/${width}px-`);
 }
 
 /* ════════════════════════════════════════════════════
-   Caches SPARQL (chargés une fois, piochés aléatoirement)
+   Caches
    ════════════════════════════════════════════════════ */
 const cache = {
-  country:    [],
-  chrono:     [],
-  whoIsIt:    [],
-  howMany:    [],
-  popularity: [],
+  country: [],
+  chrono:  [],
+  whoIsIt: [],
+  howMany: [],
 };
 
-/* ── Pays ── */
+/* ── PAYS ── */
 async function fillCountryCache() {
-  /* Monuments UNESCO + bâtiments célèbres + parcs naturels avec image ET pays */
   const types = shuffle([
-    "wd:Q839954",   /* site archéologique */
-    "wd:Q570116",   /* monument commémoratif */
-    "wd:Q16560",    /* palais */
-    "wd:Q44377",    /* tour */
-    "wd:Q12280",    /* pont */
-    "wd:Q484170",   /* château */
-    "wd:Q23413",    /* château fort */
-    "wd:Q33506",    /* musée */
-    "wd:Q1081138",  /* parc national */
-    "wd:Q5086",     /* cathédrale */
+    { id: "wd:Q839954",  label: "site archéologique" },
+    { id: "wd:Q16560",   label: "palais" },
+    { id: "wd:Q44377",   label: "tour" },
+    { id: "wd:Q12280",   label: "pont" },
+    { id: "wd:Q484170",  label: "château" },
+    { id: "wd:Q33506",   label: "musée" },
+    { id: "wd:Q1081138", label: "parc national" },
+    { id: "wd:Q5086",    label: "cathédrale" },
+    { id: "wd:Q23413",   label: "château fort" },
+    { id: "wd:Q570116",  label: "monument" },
   ]);
-  const type = types[0];
-  const offset = Math.floor(Math.random() * 200);
+  const t = types[0];
+  const offset = Math.floor(Math.random() * 300);
   const q = `
-    SELECT ?item ?label ?image ?paysLabel WHERE {
-      ?item wdt:P31 ${type} .
+    SELECT ?label ?image ?paysLabel WHERE {
+      ?item wdt:P31 ${t.id} .
       ?item wdt:P18 ?image .
       ?item wdt:P17 ?pays .
       ?item rdfs:label ?label FILTER(lang(?label)="fr") .
@@ -156,60 +165,61 @@ async function fillCountryCache() {
   const rows = await sparql(q);
   cache.country = shuffle(rows.map(r => ({
     label:   r.label.value,
-    image:   wikimediaThumb(r.image.value),
+    image:   wikimediaUrl(r.image.value),
     country: r.paysLabel.value,
   })));
 }
 
-/* ── Chrono ── */
+/* ── CHRONO : un seul type homogène par batch, on affiche le type ── */
+const CHRONO_TYPES = [
+  { id: "wd:Q178561",  label: "bataille",         prop: "P580", fallback: "P571" },
+  { id: "wd:Q198",     label: "guerre",            prop: "P580", fallback: "P571" },
+  { id: "wd:Q5",       label: "personnalité",      prop: "P569", fallback: null   },
+  { id: "wd:Q5086",    label: "cathédrale",        prop: "P571", fallback: null   },
+  { id: "wd:Q484170",  label: "château",           prop: "P571", fallback: null   },
+  { id: "wd:Q33506",   label: "musée",             prop: "P571", fallback: null   },
+  { id: "wd:Q11032",   label: "journal",           prop: "P571", fallback: null   },
+  { id: "wd:Q11424",   label: "film",              prop: "P577", fallback: null   },
+  { id: "wd:Q482994",  label: "album",             prop: "P577", fallback: null   },
+];
+
 async function fillChronoCache() {
-  const types = shuffle([
-    "wd:Q178561",  /* bataille */
-    "wd:Q198",     /* guerre */
-    "wd:Q4504495", /* conflit armé */
-    "wd:Q33506",   /* musée */
-    "wd:Q5086",    /* cathédrale */
-    "wd:Q484170",  /* château */
-  ]);
-  const type = types[0];
-  const offset = Math.floor(Math.random() * 100);
+  const t = shuffle([...CHRONO_TYPES])[0];
+  const prop = t.prop;
+  const offset = Math.floor(Math.random() * 150);
   const q = `
-    SELECT ?item ?label ?date WHERE {
-      ?item wdt:P31 ${type} .
-      ?item wdt:P571 ?date .
+    SELECT ?label ?date WHERE {
+      ?item wdt:P31 ${t.id} .
+      ?item wdt:${prop} ?date .
       ?item rdfs:label ?label FILTER(lang(?label)="fr") .
-    } LIMIT 60 OFFSET ${offset}`;
+    } LIMIT 80 OFFSET ${offset}`;
   const rows = await sparql(q);
-  cache.chrono = shuffle(rows.map(r => ({
-    label: r.label.value,
-    year:  new Date(r.date.value).getFullYear(),
-  })).filter(x => x.year >= -3000 && x.year <= 2023));
+  const items = shuffle(rows.map(r => ({
+    label:     r.label.value,
+    year:      new Date(r.date.value).getFullYear(),
+    typeLabel: t.label,
+  })).filter(x => !isNaN(x.year) && x.year >= -500 && x.year <= 2023));
+  cache.chrono = { items, typeLabel: t.label };
 }
 
-/* ── Qui est-ce ── */
+/* ── QUI EST-CE ── */
 async function fillWhoIsItCache() {
-  const types = shuffle([
-    "wd:Q5",        /* humain */
-    "wd:Q5",
-    "wd:Q5",
-  ]);
-  /* On cherche des personnes célèbres avec image et description fr */
   const occupations = shuffle([
-    "wd:Q33999",   /* acteur */
-    "wd:Q36180",   /* écrivain */
-    "wd:Q482980",  /* auteur */
-    "wd:Q1028181", /* peintre */
-    "wd:Q639669",  /* musicien */
-    "wd:Q40348",   /* avocat */
-    "wd:Q82955",   /* politicien */
-    "wd:Q901",     /* scientifique */
-    "wd:Q2374149", /* footballeur */
-    "wd:Q10871364",/* chanteur */
+    "wd:Q33999",    /* acteur */
+    "wd:Q36180",    /* écrivain */
+    "wd:Q1028181",  /* peintre */
+    "wd:Q639669",   /* musicien */
+    "wd:Q82955",    /* politicien */
+    "wd:Q901",      /* scientifique */
+    "wd:Q2374149",  /* footballeur */
+    "wd:Q10871364", /* chanteur */
+    "wd:Q3282637",  /* réalisateur */
+    "wd:Q2526255",  /* directeur de film */
   ]);
   const occ = occupations[0];
-  const offset = Math.floor(Math.random() * 300);
+  const offset = Math.floor(Math.random() * 400);
   const q = `
-    SELECT ?item ?label ?image ?desc WHERE {
+    SELECT ?label ?image ?desc WHERE {
       ?item wdt:P31 wd:Q5 .
       ?item wdt:P106 ${occ} .
       ?item wdt:P18 ?image .
@@ -219,26 +229,26 @@ async function fillWhoIsItCache() {
   const rows = await sparql(q);
   cache.whoIsIt = shuffle(rows.map(r => ({
     label: r.label.value,
-    image: wikimediaThumb(r.image.value),
+    image: wikimediaUrl(r.image.value),
     desc:  r.desc?.value ?? "",
   })));
 }
 
-/* ── Combien ── */
+/* ── COMBIEN ── */
 const HOW_MANY_DEFS = [
-  { prop: "P1082", sparqlType: "wd:Q515",     typeLabel: "ville",     question: "Population de",  unit: "habitants", fmt: n => n.toLocaleString("fr-FR") },
-  { prop: "P2044", sparqlType: "wd:Q8502",    typeLabel: "montagne",  question: "Altitude de",    unit: "m",         fmt: n => n.toLocaleString("fr-FR") },
-  { prop: "P2044", sparqlType: "wd:Q8502",    typeLabel: "montagne",  question: "Altitude de",    unit: "m",         fmt: n => n.toLocaleString("fr-FR") },
-  { prop: "P2043", sparqlType: "wd:Q4022",    typeLabel: "rivière",   question: "Longueur de",    unit: "m",         fmt: n => n.toLocaleString("fr-FR") },
-  { prop: "P1082", sparqlType: "wd:Q6256",    typeLabel: "pays",      question: "Population de",  unit: "habitants", fmt: n => n.toLocaleString("fr-FR") },
+  { prop: "P1082", type: "wd:Q515",  question: "Population de",  unit: "habitants", fmt: n => Math.round(n).toLocaleString("fr-FR") },
+  { prop: "P2044", type: "wd:Q8502", question: "Altitude de",    unit: "mètres",    fmt: n => Math.round(n).toLocaleString("fr-FR") },
+  { prop: "P2043", type: "wd:Q4022", question: "Longueur de",    unit: "km",        fmt: n => Math.round(n/1000).toLocaleString("fr-FR") },
+  { prop: "P1082", type: "wd:Q6256", question: "Population de",  unit: "habitants", fmt: n => Math.round(n).toLocaleString("fr-FR") },
+  { prop: "P2048", type: "wd:Q44377",question: "Hauteur de",     unit: "mètres",    fmt: n => Math.round(n).toLocaleString("fr-FR") },
 ];
 
 async function fillHowManyCache() {
   const def = shuffle([...HOW_MANY_DEFS])[0];
-  const offset = Math.floor(Math.random() * 200);
+  const offset = Math.floor(Math.random() * 250);
   const q = `
-    SELECT ?item ?label ?val WHERE {
-      ?item wdt:P31 ${def.sparqlType} .
+    SELECT ?label ?val WHERE {
+      ?item wdt:P31 ${def.type} .
       ?item wdt:${def.prop} ?val .
       ?item rdfs:label ?label FILTER(lang(?label)="fr") .
       FILTER(?val > 0)
@@ -246,30 +256,33 @@ async function fillHowManyCache() {
   const rows = await sparql(q);
   cache.howMany = shuffle(rows.map(r => ({
     label:    r.label.value,
-    value:    Math.round(parseFloat(r.val.value)),
+    value:    parseFloat(r.val.value),
     question: def.question,
     unit:     def.unit,
     fmt:      def.fmt,
+    rawVal:   parseFloat(r.val.value),
   })).filter(x => x.value > 0 && x.value < 1e12));
 }
 
 /* ════════════════════════════════════════════════════
-   Distracteurs
+   Distracteurs numériques
    ════════════════════════════════════════════════════ */
-function makeNumDistractors(value, count = 3) {
-  const factors = shuffle([0.25, 0.4, 0.5, 0.6, 1.5, 2, 3, 4, 0.1, 10, 0.75, 1.25]);
-  const used = new Set([value]);
+function makeNumDistractors(value, fmt, count = 3) {
+  const factors = shuffle([0.2, 0.35, 0.5, 0.65, 1.4, 1.8, 2.5, 3.5, 0.12, 8]);
+  const used = new Set([fmt(value)]);
   const res  = [];
   for (const f of factors) {
     if (res.length >= count) break;
-    let v = Math.round(value * f);
+    const v = value * f;
     if (v <= 0) continue;
-    if (!used.has(v)) { used.add(v); res.push(v); }
+    const label = fmt(v);
+    if (!used.has(label)) { used.add(label); res.push(v); }
   }
   while (res.length < count) {
-    const delta = Math.round(value * (0.15 + Math.random() * 0.7)) * (Math.random() > 0.5 ? 1 : -1);
+    const delta = value * (0.15 + Math.random() * 0.6) * (Math.random() > 0.5 ? 1 : -1);
     const v = Math.max(1, value + delta);
-    if (!used.has(v)) { used.add(v); res.push(v); }
+    const label = fmt(v);
+    if (!used.has(label)) { used.add(label); res.push(v); }
   }
   return res;
 }
@@ -281,28 +294,22 @@ async function loadCountry() {
   if (cache.country.length < 5) await fillCountryCache();
   if (!cache.country.length) throw new Error("Cache pays vide");
 
-  /* Cherche un item dont le pays est unique dans le cache courant (pour avoir des distracteurs) */
   const allCountries = [...new Set(cache.country.map(x => x.country))];
-  if (allCountries.length < 4) {
-    cache.country = [];
-    await fillCountryCache();
-  }
+  if (allCountries.length < 4) { cache.country = []; await fillCountryCache(); }
 
   let item = null;
   for (let i = 0; i < cache.country.length; i++) {
-    const candidate = cache.country[i];
-    const others = allCountries.filter(c => c !== candidate.country);
+    const others = allCountries.filter(c => c !== cache.country[i].country);
     if (others.length >= 3) { item = cache.country.splice(i, 1)[0]; break; }
   }
-  if (!item) { item = cache.country.shift(); }
+  if (!item) item = cache.country.shift();
 
   const allC = [...new Set(cache.country.map(x => x.country))];
   const distractors = shuffle(allC.filter(c => c !== item.country)).slice(0, 3);
-
-  /* Si pas assez de distracteurs, on complète avec des pays connus */
-  const FALLBACK = ["France","Italie","Espagne","Allemagne","Royaume-Uni","Japon","Brésil","Australie","Inde","Chine","Mexique","Canada"];
+  /* Fallback si pas assez de pays dans le cache courant */
+  const FB = ["France","Italie","Espagne","Allemagne","Royaume-Uni","Japon","Brésil","Australie","Inde","Chine","Mexique","Canada","Portugal","Suède","Turquie"];
   while (distractors.length < 3) {
-    const f = FALLBACK.find(c => c !== item.country && !distractors.includes(c));
+    const f = FB.find(c => c !== item.country && !distractors.includes(c));
     if (f) distractors.push(f); else break;
   }
 
@@ -313,7 +320,7 @@ async function loadCountry() {
 
   card.innerHTML = `
     <div class="card-image-wrap">
-      <img class="card-image" src="${esc(item.image)}" alt="${esc(item.label)}" loading="lazy">
+      ${imgHTML(item.image, item.label)}
       <div class="card-image-caption">${esc(item.label)}</div>
     </div>
     <div class="card-head">
@@ -328,36 +335,39 @@ async function loadCountry() {
       ${opts.map(o=>`<button class="opt" data-val="${esc(o.val)}">${esc(o.label)}</button>`).join("")}
     </div>
     ${nextBtn()}`;
-
   bindOptions(item.country);
 }
 
 /* ════════════════════════════════════════════════════
-   MODE : Chrono
+   MODE : Chrono — même type pour les deux items
    ════════════════════════════════════════════════════ */
 async function loadBeforeAfter() {
-  if (cache.chrono.length < 4) await fillChronoCache();
-  if (cache.chrono.length < 2) throw new Error("Cache chrono vide");
+  if (!cache.chrono?.items || cache.chrono.items.length < 4) await fillChronoCache();
+  if (!cache.chrono?.items || cache.chrono.items.length < 2) throw new Error("Cache chrono vide");
 
-  let a, b;
+  const { items, typeLabel } = cache.chrono;
+  let a, b, tries = 0;
   do {
-    [a, b] = shuffle(cache.chrono).slice(0, 2);
-  } while (a.year === b.year);
+    [a, b] = shuffle(items).slice(0, 2);
+    tries++;
+  } while (a.year === b.year && tries < 20);
+
+  if (a.year === b.year) { cache.chrono = null; return loadBeforeAfter(); }
 
   const earlier = a.year < b.year ? a : b;
   const later   = a.year < b.year ? b : a;
   const fmtY    = y => y < 0 ? `${Math.abs(y)} av. J.-C.` : String(y);
 
-  /* Retire les deux du cache */
-  cache.chrono = cache.chrono.filter(x => x !== a && x !== b);
+  /* Retire les deux */
+  cache.chrono.items = items.filter(x => x !== a && x !== b);
 
   card.innerHTML = `
     <div class="card-head">
       <div class="card-mode-label">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Lequel est le plus ancien ?
+        Chrono · ${esc(typeLabel)}
       </div>
-      <div class="card-question">Quel événement s'est produit en premier ?</div>
+      <div class="card-question">Lequel est le plus ancien ?</div>
     </div>
     <div class="feedback-bar"></div>
     <div class="options grid2">
@@ -367,77 +377,80 @@ async function loadBeforeAfter() {
     ${nextBtn()}`;
 
   bindOptions("earlier", (isOk, fb) => {
-    card.querySelectorAll(".opt")[0].insertAdjacentHTML("beforeend",`<br><span class="event-year-badge">${fmtY(earlier.year)}</span>`);
-    card.querySelectorAll(".opt")[1].insertAdjacentHTML("beforeend",`<br><span class="event-year-badge">${fmtY(later.year)}</span>`);
+    card.querySelectorAll(".opt")[0].insertAdjacentHTML("beforeend",
+      `<br><span class="event-year-badge">${fmtY(earlier.year)}</span>`);
+    card.querySelectorAll(".opt")[1].insertAdjacentHTML("beforeend",
+      `<br><span class="event-year-badge">${fmtY(later.year)}</span>`);
     if (fb) fb.textContent = isOk
-      ? `✓ Correct ! ${earlier.label} (${fmtY(earlier.year)}) est bien plus ancien.`
+      ? `✓ Correct ! ${earlier.label} (${fmtY(earlier.year)}) est plus ancien.`
       : `✗ Non — ${earlier.label} (${fmtY(earlier.year)}) est le plus ancien.`;
   });
 }
 
 /* ════════════════════════════════════════════════════
-   MODE : Popularité  (most-read, 2 colonnes)
+   MODE : Popularité — images via upload.wikimedia.org
    ════════════════════════════════════════════════════ */
 async function loadPopularity() {
-  /* most-read d'hier */
-  const pad  = n => String(n).padStart(2,"0");
-  const now  = new Date(Date.now() - 864e5);
-  const url  = `${WIKI_VIEWS_TOP}/${now.getUTCFullYear()}/${pad(now.getUTCMonth()+1)}/${pad(now.getUTCDate())}`;
-  const r    = await fetch(url);
+  const pad = n => String(n).padStart(2,"0");
+  const now = new Date(Date.now() - 864e5);
+  const url = `${WIKI_VIEWS_TOP}/${now.getUTCFullYear()}/${pad(now.getUTCMonth()+1)}/${pad(now.getUTCDate())}`;
+  const r   = await fetch(url);
   if (!r.ok) throw new Error(`most-read ${r.status}`);
-  const d    = await r.json();
+  const d   = await r.json();
 
   const BL = /^(Accueil|Spécial:|Wikipédia:|Portail:|Aide:|Utilisateur|Main_Page|Special:|Wikipedia:)/i;
   const articles = (d.items?.[0]?.articles||[]).filter(a => !BL.test(a.article) && a.views > 0);
   if (articles.length < 20) throw new Error("Pas assez d'articles");
 
-  const pool = articles.slice(0, 50);
+  const pool = articles.slice(0, 60);
   const idxA = Math.floor(Math.random() * 10);
-  const idxB = 10 + Math.floor(Math.random() * Math.min(40, pool.length - 10));
+  const idxB = 10 + Math.floor(Math.random() * Math.min(50, pool.length - 10));
   const artA = pool[idxA];
   const artB = pool[idxB];
 
   const titleA = artA.article.replaceAll("_"," ");
   const titleB = artB.article.replaceAll("_"," ");
 
-  /* Récup résumés pour images — on utilise l'API REST Wikipedia */
-  const [sumA, sumB] = await Promise.all([
-    fetch(`${WIKI_REST}/page/summary/${encodeURIComponent(titleA)}`).then(r=>r.ok?r.json():null).catch(()=>null),
-    fetch(`${WIKI_REST}/page/summary/${encodeURIComponent(titleB)}`).then(r=>r.ok?r.json():null).catch(()=>null),
-  ]);
-
-  /* Images : on utilise Special:FilePath via Wikimedia pour éviter les soucis CORS/referrer */
-  const getImg = (sum, title) => {
-    if (sum?.thumbnail?.source) {
-      /* Remplace la taille dans l'URL thumbnail Wikipedia */
-      return sum.thumbnail.source.replace(/\/\d+px-/, "/400px-");
-    }
-    return null;
+  /* Récup résumés Wikipedia pour images + titres lisibles */
+  const fetchSum = async title => {
+    try {
+      const r = await fetch(`${WIKI_REST}/page/summary/${encodeURIComponent(title)}`);
+      return r.ok ? r.json() : null;
+    } catch { return null; }
   };
+  const [sumA, sumB] = await Promise.all([fetchSum(titleA), fetchSum(titleB)]);
 
-  const imgA = getImg(sumA, titleA);
-  const imgB = getImg(sumB, titleB);
+  /* Image : on prend le thumbnail Wikipedia et on augmente la résolution */
+  const getImg = sum => sum?.thumbnail?.source ? wikiThumb(sum.thumbnail.source, 400) : null;
+  const imgA = getImg(sumA);
+  const imgB = getImg(sumB);
+
+  const tA = sumA?.title ?? titleA;
+  const tB = sumB?.title ?? titleB;
 
   const presentALeft = Math.random() > 0.5;
-  const left  = presentALeft
-    ? { title: sumA?.title??titleA, img: imgA, views: artA.views, key: "A" }
-    : { title: sumB?.title??titleB, img: imgB, views: artB.views, key: "B" };
-  const right = presentALeft
-    ? { title: sumB?.title??titleB, img: imgB, views: artB.views, key: "B" }
-    : { title: sumA?.title??titleA, img: imgA, views: artA.views, key: "A" };
+  const left  = presentALeft ? { title: tA, img: imgA, views: artA.views, key: "A" }
+                              : { title: tB, img: imgB, views: artB.views, key: "B" };
+  const right = presentALeft ? { title: tB, img: imgB, views: artB.views, key: "B" }
+                              : { title: tA, img: imgA, views: artA.views, key: "A" };
+  const total = artA.views + artB.views;
 
-  const correctKey = "A";
-
-  function colHTML(side, key) {
+  function colHTML(side) {
+    const pct = Math.round((side.views / total) * 100);
     return `
-      <button class="opt opt-pop" data-val="${key}">
-        ${side.img
-          ? `<div class="pop-img-wrap"><img class="pop-img" src="${esc(side.img)}" alt="${esc(side.title)}" loading="lazy" referrerpolicy="no-referrer"></div>`
-          : `<div class="pop-img-wrap pop-img-placeholder">?</div>`}
+      <button class="opt opt-pop" data-val="${side.key}">
+        <div class="pop-img-wrap">
+          ${side.img
+            ? `<img class="pop-img" src="${esc(side.img)}" alt="${esc(side.title)}"
+                loading="lazy" referrerpolicy="no-referrer"
+                onerror="this.parentElement.classList.add('pop-img-error')">`
+            : `<div class="pop-no-img">?</div>`}
+        </div>
         <div class="pop-label">${esc(side.title)}</div>
-        <div class="pop-views-reveal" style="display:none">
-          <span class="pop-views-num">${side.views.toLocaleString("fr-FR")} vues</span>
-          <div class="pop-bar-wrap"><div class="pop-bar-fill ${side.key==="A"?"winner":""}" style="width:0%" data-target="${Math.round((side.views/(artA.views+artB.views))*100)}"></div></div>
+        <div class="pop-reveal" hidden>
+          <span class="pop-views">${side.views.toLocaleString("fr-FR")} vues</span>
+          <div class="pop-bar-bg"><div class="pop-bar" data-w="${pct}" style="width:0" ${side.key==="A"?"data-winner":""} ></div></div>
+          <span class="pop-pct">${pct}%</span>
         </div>
       </button>`;
   }
@@ -448,25 +461,25 @@ async function loadPopularity() {
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Popularité Wikipedia
       </div>
-      <div class="card-question">Lequel est le plus consulté hier ?</div>
+      <div class="card-question">Lequel a été le plus consulté hier ?</div>
     </div>
     <div class="feedback-bar"></div>
-    <div class="options grid2 pop-grid">
-      ${colHTML(left,  presentALeft?"A":"B")}
-      ${colHTML(right, presentALeft?"B":"A")}
+    <div class="options pop-grid">
+      ${colHTML(left)}
+      ${colHTML(right)}
     </div>
     ${nextBtn()}`;
 
-  bindOptions(correctKey, (isOk, fb) => {
-    card.querySelectorAll(".pop-views-reveal").forEach(el => el.style.display = "");
+  bindOptions("A", (isOk, fb) => {
+    card.querySelectorAll(".pop-reveal").forEach(el => el.hidden = false);
     requestAnimationFrame(() => {
-      card.querySelectorAll(".pop-bar-fill").forEach(bar => {
-        bar.style.width = bar.dataset.target + "%";
+      card.querySelectorAll(".pop-bar").forEach(bar => {
+        bar.style.width = bar.dataset.w + "%";
       });
     });
     if (fb) fb.textContent = isOk
-      ? `✓ Oui ! "${sumA?.title??titleA}" (${artA.views.toLocaleString("fr-FR")} vues) vs ${artB.views.toLocaleString("fr-FR")} vues.`
-      : `✗ "${sumA?.title??titleA}" était plus consulté (${artA.views.toLocaleString("fr-FR")} vues).`;
+      ? `✓ Oui ! "${tA}" (${artA.views.toLocaleString("fr-FR")} vues) vs ${artB.views.toLocaleString("fr-FR")} vues.`
+      : `✗ "${tA}" était plus consulté (${artA.views.toLocaleString("fr-FR")} vues).`;
   });
 }
 
@@ -478,13 +491,8 @@ async function loadWhoIsIt() {
   if (cache.whoIsIt.length < 4) throw new Error("Cache qui est-ce vide");
 
   const item = cache.whoIsIt.shift();
-  /* 3 distracteurs depuis le reste du cache */
   const distractors = shuffle(cache.whoIsIt.filter(x => x.label !== item.label)).slice(0, 3);
-  if (distractors.length < 3) {
-    cache.whoIsIt = [];
-    await fillWhoIsItCache();
-    return loadWhoIsIt();
-  }
+  if (distractors.length < 3) { cache.whoIsIt = []; return loadWhoIsIt(); }
 
   const opts = shuffle([
     { val: item.label, label: item.label },
@@ -493,7 +501,8 @@ async function loadWhoIsIt() {
 
   card.innerHTML = `
     <div class="card-image-wrap">
-      <img class="card-image" src="${esc(item.image)}" alt="Qui est-ce ?" loading="lazy" referrerpolicy="no-referrer" style="filter:brightness(.92) contrast(1.05)">
+      ${imgHTML(item.image, "Qui est-ce ?")}
+      <div class="card-image-caption-hidden" id="reveal-caption"></div>
     </div>
     <div class="card-head">
       <div class="card-mode-label">
@@ -509,11 +518,8 @@ async function loadWhoIsIt() {
     ${nextBtn()}`;
 
   bindOptions(item.label, (isOk, fb) => {
-    /* Révèle le nom dans la caption */
-    const wrap = card.querySelector(".card-image-wrap");
-    if (wrap && !wrap.querySelector(".card-image-caption")) {
-      wrap.insertAdjacentHTML("beforeend", `<div class="card-image-caption">${esc(item.label)}</div>`);
-    }
+    const cap = qs("#reveal-caption");
+    if (cap) { cap.textContent = item.label; cap.className = "card-image-caption"; }
     if (fb) fb.textContent = isOk ? "✓ Bien joué !" : `✗ C'était : ${item.label}`;
   });
 }
@@ -526,10 +532,10 @@ async function loadHowMany() {
   if (!cache.howMany.length) throw new Error("Cache combien vide");
 
   const item = cache.howMany.shift();
-  const distractorVals = makeNumDistractors(item.value);
+  const distractorVals = makeNumDistractors(item.rawVal, item.fmt);
   const opts = shuffle([
-    { val: String(item.value), label: item.fmt(item.value) + " " + item.unit },
-    ...distractorVals.map(v => ({ val: String(v), label: item.fmt(v) + " " + item.unit })),
+    { val: item.fmt(item.rawVal), label: item.fmt(item.rawVal) + " " + item.unit },
+    ...distractorVals.map(v => ({ val: item.fmt(v), label: item.fmt(v) + " " + item.unit })),
   ]);
 
   card.innerHTML = `
@@ -546,10 +552,10 @@ async function loadHowMany() {
     </div>
     ${nextBtn()}`;
 
-  bindOptions(String(item.value), (isOk, fb) => {
+  bindOptions(item.fmt(item.rawVal), (isOk, fb) => {
     if (fb) fb.textContent = isOk
       ? `✓ Exact !`
-      : `✗ La réponse était : ${item.fmt(item.value)} ${item.unit}`;
+      : `✗ La réponse était : ${item.fmt(item.rawVal)} ${item.unit}`;
   });
 }
 
@@ -571,7 +577,6 @@ async function loadQuestion() {
 }
 window.loadQuestion = loadQuestion;
 
-/* ── Init ── */
 qs("#modes").querySelectorAll(".mode-btn").forEach(btn => {
   btn.onclick = () => {
     qs("#modes").querySelectorAll(".mode-btn").forEach(b => {
@@ -584,3 +589,5 @@ qs("#modes").querySelectorAll(".mode-btn").forEach(btn => {
 });
 
 loadQuestion();
+Claude est une IA et peut faire des erreurs. Veuillez vérifier les réponses.
+

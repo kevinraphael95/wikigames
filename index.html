@@ -10,12 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 </head>
 <body>
-
 <div class="bg-grid" aria-hidden="true"></div>
-
 <div id="app">
-
-  <!-- Header -->
   <header class="header">
     <div class="logo">
       <span class="logo-wiki">Wiki</span><span class="logo-games">Games</span>
@@ -33,30 +29,16 @@
     </div>
   </header>
 
-  <!-- Stats bar -->
   <div class="stats-row">
-    <div class="stat">
-      <div class="stat-val" id="sb-score">0</div>
-      <div class="stat-lbl">Points</div>
-    </div>
+    <div class="stat"><div class="stat-val" id="sb-score">0</div><div class="stat-lbl">Points</div></div>
     <div class="stat-divider"></div>
-    <div class="stat">
-      <div class="stat-val" id="sb-streak">0</div>
-      <div class="stat-lbl">Série</div>
-    </div>
+    <div class="stat"><div class="stat-val" id="sb-streak">0</div><div class="stat-lbl">Série</div></div>
     <div class="stat-divider"></div>
-    <div class="stat">
-      <div class="stat-val" id="sb-best">0</div>
-      <div class="stat-lbl">Record</div>
-    </div>
+    <div class="stat"><div class="stat-val" id="sb-best">0</div><div class="stat-lbl">Record</div></div>
     <div class="stat-divider"></div>
-    <div class="stat">
-      <div class="stat-val" id="sb-rounds">0</div>
-      <div class="stat-lbl">Questions</div>
-    </div>
+    <div class="stat"><div class="stat-val" id="sb-rounds">0</div><div class="stat-lbl">Questions</div></div>
   </div>
 
-  <!-- Mode selector -->
   <nav class="modes" id="modes" role="tablist" aria-label="Modes de jeu">
     <button class="mode-btn active" data-mode="which-country" role="tab" aria-selected="true">
       <span class="mode-icon">📍</span> Pays
@@ -67,21 +49,20 @@
     <button class="mode-btn" data-mode="popularity" role="tab" aria-selected="false">
       <span class="mode-icon">📊</span> Popularité
     </button>
-    <button class="mode-btn" data-mode="true-false" role="tab" aria-selected="false">
-      <span class="mode-icon">❓</span> Vrai / Faux
+    <button class="mode-btn" data-mode="who-is-it" role="tab" aria-selected="false">
+      <span class="mode-icon">🖼️</span> Qui est-ce ?
+    </button>
+    <button class="mode-btn" data-mode="how-many" role="tab" aria-selected="false">
+      <span class="mode-icon">🔢</span> Combien ?
     </button>
   </nav>
 
-  <!-- Card -->
   <main class="card" id="card" role="region" aria-live="polite" aria-label="Question en cours"></main>
 
-  <!-- Footer -->
   <footer class="footer">
-    Données · <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipédia</a> &amp; <a href="https://opentdb.com" target="_blank" rel="noopener">Open Trivia DB</a>
+    Données · <a href="https://www.wikipedia.org" target="_blank" rel="noopener">Wikipédia</a> &amp; <a href="https://www.wikidata.org" target="_blank" rel="noopener">Wikidata</a>
   </footer>
-
 </div>
-
 <script src="script.js"></script>
 </body>
 </html>
